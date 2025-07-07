@@ -55,6 +55,7 @@ async def get_browser():
     if browser_session is None:
         from browser_use.browser import BrowserSession, BrowserProfile
         
+        print("🔄 Starting browser...")
         profile = BrowserProfile(
             headless=True,
             user_data_dir=None,
@@ -66,16 +67,23 @@ async def get_browser():
                 '--disable-background-timer-throttling',
                 '--disable-renderer-backgrounding',
                 '--disable-backgrounding-occluded-windows',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--no-first-run',
+                '--disable-default-apps',
             ]
         )
         
         try:
             browser_session = BrowserSession(browser_profile=profile)
-            await browser_session.start()
+            await asyncio.wait_for(browser_session.start(), timeout=60)
             print("✅ Browser started")
+        except asyncio.TimeoutError:
+            print("❌ Browser startup timeout")
+            raise HTTPException(status_code=503, detail="Browser startup timeout")
         except Exception as e:
             print(f"❌ Browser failed to start: {e}")
-            raise HTTPException(status_code=503, detail="Browser unavailable")
+            raise HTTPException(status_code=503, detail=f"Browser unavailable: {str(e)}")
     
     return browser_session
 
@@ -93,12 +101,17 @@ async def get_llm():
 async def root():
     return {"message": "Guruwalk Agent API", "status": "online"}
 
+@app.get("/ping")
+async def ping():
+    return {"ping": "pong"}
+
 @app.get("/health")
 async def health():
     return {
         "status": "healthy",
         "browser": "ready" if browser_session else "not_started",
-        "active_tasks": len([t for t in tasks.values() if t["status"] == "running"])
+        "active_tasks": len([t for t in tasks.values() if t["status"] == "running"]),
+        "server": "online"
     }
 
 @app.post("/tasks", response_model=TaskResponse)
